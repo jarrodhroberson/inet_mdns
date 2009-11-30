@@ -55,7 +55,8 @@ process_dnsrec1(Sub,[Response|Rest]) ->
           NewRR = Response#dns_rr{tm=get_timestamp()},
           NewValue = sets:add_element(NewRR,Value),
           NewSub = dict:store(Dom,NewValue,Sub),
-          io:format("~p=~p~n",[Dom,dict:find(Dom,NewSub)]);
+          io:format("~p=~p~n",[Dom,NewValue]),
+          process_dnsrec1(NewSub,Rest);
      false ->
           %% do nothing for non-subscribed domains
          ok
