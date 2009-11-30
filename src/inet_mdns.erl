@@ -20,7 +20,7 @@ close(S) -> gen_udp:close(S).
 start() ->
    S=open({224,0,0,251},5353),
    % TODO: this is just for testing, I am adding a subscription for iChat for testing 
-   Pid=spawn(?MODULE,receiver,[dict:store("_presence._tcp.local",sets:new(),dict:new())]),
+   Pid=spawn(?MODULE,receiver,[dict:store("_presence._tcp.local",dict:new(),dict:new())]),
    gen_udp:controlling_process(S,Pid),
    {S,Pid}.
 
@@ -58,7 +58,7 @@ is_subscribed(Dom,[S|Rest]) ->
 
 % process the list of resource records one at a time
 process_dnsrec1(Sub,[]) -> 
-    io:format("Subscriptions: ~p~n",[Sub]),
+    %io:format("Subscriptions: ~p~n",[Sub]),
     Sub;
 process_dnsrec1(Sub,[Response|Rest]) ->
   Dom = Response#dns_rr.domain,
@@ -67,7 +67,8 @@ process_dnsrec1(Sub,[Response|Rest]) ->
 		  {ok,Value} = dict:find(SD,Sub),
           % update the dns_rr to the current timestamp 
           NewRR = Response#dns_rr{tm=get_timestamp()},
-          NewValue = sets:add_element(NewRR,Value),
+          Response#dns_rr{domain=D,type=T,class=C},
+          NewValue = dict:store({D,T,C},Value),
           NewSub = dict:store(SD,NewValue,Sub),
           process_dnsrec1(NewSub,Rest);
      false ->
