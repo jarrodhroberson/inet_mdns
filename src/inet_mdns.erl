@@ -31,13 +31,8 @@ stop({S,Pid}) ->
 receiver(Sub) ->
   receive
       {udp, _Socket, _IP, _InPortNo, Packet} ->
-          DNSREC = inet_dns:decode(Packet),
-          %io:format("******~n~p~n******~n",[DNSREC]),
-          NewSub = process_dnsrec(Sub,DNSREC),
+          NewSub = process_dnsrec(Sub,inet_dns:decode(Packet)),
           receiver(NewSub);
-      {sub,dump} ->
-          io:format("~p~n",[Sub]),
-          receiver(Sub);
       stop -> 
 		   true;
        AnythingElse -> 
@@ -74,7 +69,6 @@ process_dnsrec1(Sub,[Response|Rest]) ->
           NewRR = Response#dns_rr{tm=get_timestamp()},
           NewValue = sets:add_element(NewRR,Value),
           NewSub = dict:store(SD,NewValue,Sub),
-          io:format("Stored: ~p=~p~n",[Dom,NewSub]),
           process_dnsrec1(NewSub,Rest);
      false ->
           process_dnsrec1(Sub,Rest)
