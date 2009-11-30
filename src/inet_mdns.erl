@@ -20,7 +20,7 @@ close(S) -> gen_udp:close(S).
 start() ->
    S=open({224,0,0,251},5353),
    % TODO: this is just for testing, I am adding a subscription for iChat for testing 
-   Pid=spawn(?MODULE,receiver,[dict:store("_presence._tcp.local",dict:new(),dict:new())]),
+   Pid=spawn(?MODULE,receiver,[dict:store("_see._tcp.local",dict:new(),dict:new())]),
    gen_udp:controlling_process(S,Pid),
    {S,Pid}.
 
@@ -32,6 +32,7 @@ receiver(Sub) ->
   receive
       {udp, _Socket, _IP, _InPortNo, Packet} ->
           NewSub = process_dnsrec(Sub,inet_dns:decode(Packet)),
+          io:format("Subscriptions: ~p~n",[NewSub]),
           receiver(NewSub);
       stop -> 
 		   true;
@@ -57,20 +58,25 @@ is_subscribed(Dom,[S|Rest]) ->
     end.
 
 % process the list of resource records one at a time
-process_dnsrec1(Sub,[]) -> 
-    %io:format("Subscriptions: ~p~n",[Sub]),
-    Sub;
+process_dnsrec1(Sub,[]) -> Sub;
 process_dnsrec1(Sub,[Response|Rest]) ->
   Dom = Response#dns_rr.domain,
+  Key = {Response#dns_rr.domain,Response#dns_rr.type,Response#dns_rr.class},
   case is_subscribed(Dom,dict:fetch_keys(Sub)) of
 	  {ok,SD} ->
 		  {ok,Value} = dict:find(SD,Sub),
-          % update the dns_rr to the current timestamp 
-          NewRR = Response#dns_rr{tm=get_timestamp()},
-          Response#dns_rr{domain=D,type=T,class=C},
-          NewValue = dict:store({D,T,C},Value),
-          NewSub = dict:store(SD,NewValue,Sub),
-          process_dnsrec1(NewSub,Rest);
+          % if the ttl == Zero then we forget about the details for that server
+          case Response#dns_rr.ttl == 0 of
+              true ->
+                  NewSub = dict:store(SD,dict:new(),Sub),
+                  process_dnsrec1(NewSub,[]);
+              false ->
+                  % update the dns_rr to the current timestamp 
+                  NewRR = Response#dns_rr{tm=get_timestamp()},
+                  NewValue = dict:store(Key,NewRR,Value),
+                  NewSub = dict:store(SD,NewValue,Sub),
+                  process_dnsrec1(NewSub,Rest)
+          end;
      false ->
           process_dnsrec1(Sub,Rest)
   end.
