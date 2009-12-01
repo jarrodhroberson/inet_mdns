@@ -4,6 +4,7 @@
 
 -export([open/2,start/0]).
 -export([stop/1,receiver/1]).
+-export([subscribe/2,unsubscribe/2,getsubs/1]).
 
 % gets a timestamp in ms from the epoch
 get_timestamp() ->
@@ -19,8 +20,7 @@ close(S) -> gen_udp:close(S).
 
 start() ->
    S=open({224,0,0,251},5353),
-   % TODO: this is just for testing, I am adding a subscription for iChat for testing 
-   Pid=spawn(?MODULE,receiver,[dict:store("_see._tcp.local",dict:new(),dict:new())]),
+   Pid=spawn(?MODULE,receiver,[dict:new()]),
    gen_udp:controlling_process(S,Pid),
    {S,Pid}.
 
@@ -28,12 +28,31 @@ stop({S,Pid}) ->
    close(S),
    Pid ! stop.
 
+subscribe(Domain,Pid) ->
+    Pid ! {sub,Domain}.
+
+unsubscribe(Domain,Pid) ->
+    Pid ! {unsub,Domain}.
+
+getsubs(Pid) ->
+    Pid ! {getsubs,self()},
+    receive
+        {ok,Sub} ->
+            {ok,Sub}
+    end.
+
 receiver(Sub) ->
   receive
       {udp, _Socket, _IP, _InPortNo, Packet} ->
           NewSub = process_dnsrec(Sub,inet_dns:decode(Packet)),
-          io:format("Subscriptions: ~p~n",[NewSub]),
           receiver(NewSub);
+      {sub,Domain} ->
+          receiver(dict:store(Domain,dict:new(),Sub));
+      {unsub,Domain} ->
+          receiver(dict:erase(Domain, Sub));
+      {getsubs,Pid} ->
+          Pid ! {ok,Sub},
+          receiver(Sub);
       stop -> 
 		   true;
        AnythingElse -> 
