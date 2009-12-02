@@ -61,8 +61,7 @@ process_dnsrec(Sub,{ok,#dns_rec{anlist=Responses}}) ->
  
 process_responses(S, Value, Responses) ->
     lists:foldl(fun(#dns_rr{domain = Domain} = Response, Val) ->
-        process_response(lists:suffix(S, Domain), Response, Val)
-    end, Value, Responses).
+        process_response(lists:suffix(S, Domain), Response, Val) end, Value, Responses).
  
 process_response(false, _Response, Val) -> Val;
 process_response(true, #dns_rr{ttl = TTL} = _Response, _Val) when TTL == 0 ->
