@@ -2,7 +2,7 @@
 
 -include_lib("kernel/src/inet_dns.hrl").
 
--export([open/2,start/0]).
+-export([start/0]).
 -export([stop/1,receiver/1]).
 -export([subscribe/2,unsubscribe/2,getsubs/1]).
 
