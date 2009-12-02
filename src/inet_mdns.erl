@@ -6,7 +6,7 @@
 -export([stop/1,receiver/1]).
 -export([subscribe/2,unsubscribe/2,getsubs/1]).
 
-% gets a timestamp in ms from the epoch
+% gets a timestamp in ms from the epoch 1970-01-01
 get_timestamp() ->
     {Mega,Sec,Micro} = erlang:now(),
     (Mega*1000000+Sec)*1000000+Micro.
@@ -61,43 +61,22 @@ receiver(Sub) ->
    end.
 
 % process the dns resource records list
-process_dnsrec(_Sub,{error,E}) -> 
-    io:format("Error: ~p~n", [E]);
-process_dnsrec(Sub,{ok,#dns_rec{anlist=Responses}}) -> 
-    process_dnsrec1(Sub,Responses).
-
-% test to see if a dns_rr.domain is subscribed to
-is_subscribed(_,[]) -> false;
-is_subscribed(Dom,[S|Rest]) ->
-    case lists:suffix(S,Dom) of
-        true ->
-            {ok,S};
-        false ->
-            is_subscribed(Dom,Rest)
-    end.
-
+process_dnsrec(Sub,{error,E}) ->
+    io:format("Error: ~p~n", [E]), % TODO: Improve error handling (log or such)
+    Sub;
+process_dnsrec(Sub,{ok,#dns_rec{anlist=Responses}}) ->
+    dict:map(fun(S, V) -> process_responses(S, V, Responses) end, Sub).
+ 
 % process the list of resource records one at a time
-process_dnsrec1(Sub,[]) -> Sub;
-process_dnsrec1(Sub,[Response|Rest]) ->
-  Dom = Response#dns_rr.domain,
-  Key = {Response#dns_rr.domain,Response#dns_rr.type,Response#dns_rr.class},
-  case is_subscribed(Dom,dict:fetch_keys(Sub)) of
-	  {ok,SD} ->
-		  {ok,Value} = dict:find(SD,Sub),
-          % if the ttl == Zero then we forget about the details for that server
-          case Response#dns_rr.ttl == 0 of
-              true ->
-                  NewSub = dict:store(SD,dict:new(),Sub),
-                  process_dnsrec1(NewSub,[]);
-              false ->
-                  % update the dns_rr to the current timestamp 
-                  NewRR = Response#dns_rr{tm=get_timestamp()},
-                  NewValue = dict:store(Key,NewRR,Value),
-                  NewSub = dict:store(SD,NewValue,Sub),
-                  process_dnsrec1(NewSub,Rest)
-          end;
-     false ->
-          process_dnsrec1(Sub,Rest)
-  end.
-		
-		   
+process_responses(S, Value, Responses) ->
+    lists:foldl(fun(#dns_rr{domain = Domain} = Response, Val) ->
+        process_response(lists:suffix(S, Domain), Response, Val)
+    end, Value, Responses).
+ 
+process_response(false, _Response, Val) -> Val;
+process_response(true, #dns_rr{ttl = TTL} = Response, Val) when TTL == 0 ->
+    dict:new();
+process_response(true, #dns_rr{domain = Domain, type = Type, class = Class} = Response, Val) ->
+    NewRR = Response#dns_rr{tm=get_timestamp()},
+    dict:store({Domain, Type, Class}, NewRR, Val).
+
