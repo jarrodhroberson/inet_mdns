@@ -68,12 +68,21 @@ process_response(true, #dns_rr{ttl=TTL} = _Response, _Val) when TTL == 0 ->
     %% the server left and lets us know this because TTL == Zero
     dict:new();
 process_response(true, #dns_rr{domain = Domain, type = Type, class = Class} = Response, Val) when Type == txt ->
-    DTXT = lists:foldl(fun(T,D) -> [K,V] = re:split(T,"=",[{return,list}]),dict:store(K,V,D) end,dict:new(),Response#dns_rr.data),
+    DTXT = lists:foldl(fun(T,D) -> {K,V} = normalize_kv(T),dict:store(K,V,D) end,dict:new(),Response#dns_rr.data),
     NewRR = Response#dns_rr{tm=get_timestamp(),data=DTXT},
     dict:store({Domain,Type,Class},NewRR,Val);
 process_response(true, #dns_rr{domain = Domain, type = Type, class = Class} = Response, Val) ->
     NewRR = Response#dns_rr{tm=get_timestamp()},
     dict:store({Domain,Type,Class},NewRR,Val).
+
+normalize_kv(T) ->
+    %% normalize single boolean key value entries
+    %% make "key" == "key=true"
+    %% make "key=" == "key=[]"
+    case re:split(T,"=",[{return,list}]) of 
+        [K] -> {K,true}; 
+        [K,V] -> {K,V} 
+    end.
 
 
 
