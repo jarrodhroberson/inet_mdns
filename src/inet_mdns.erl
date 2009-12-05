@@ -5,6 +5,20 @@
 -export([start/0]).
 -export([stop/1,receiver/1]).
 -export([subscribe/2,unsubscribe/2,getsubs/1]).
+-export([send/0]).
+
+-define(ADDR,{224,0,0,251}).
+-define(PORT,5353).
+
+send() ->
+    H = #dns_header{qr=1,aa=1},
+    {ok,HN} = inet:gethostname(),
+    D = "test@" ++ HN ++ "._test._tcp.local",
+    R = #dns_rr{domain="_test._tcp.local",type=ptr,ttl=4500,data=D},
+    Rec = #dns_rec{header=H,anlist=[R]},
+    {ok,S}=gen_udp:open(0,[]),
+    inet:setopts(S, [{reuseaddr,true},{broadcast,true}]),
+    gen_udp:send(S,?ADDR,?PORT,inet_dns:encode(Rec)).
 
 get_timestamp() ->
     %% gets a timestamp in ms from the epoch 1970-01-01
@@ -13,8 +27,8 @@ get_timestamp() ->
 
 start() ->
     %% start the process listening for mdns messages
-   {ok,S} = gen_udp:open(5353,[{reuseaddr,true},{ip,{224,0,0,251}},{multicast_ttl,4},{broadcast,true}, binary]),
-   inet:setopts(S,[{add_membership,{{224,0,0,251},{0,0,0,0}}}]),
+   {ok,S} = gen_udp:open(?PORT,[{reuseaddr,true},{ip,?ADDR},binary]),
+   inet:setopts(S,[{add_membership,{?ADDR,{0,0,0,0}}}]),
    Pid=spawn(?MODULE,receiver,[dict:new()]),
    gen_udp:controlling_process(S,Pid),
    {S,Pid}.
@@ -33,7 +47,7 @@ getsubs(Pid) ->
         {ok,Sub} ->
             {ok,Sub}
     end.
-
+    
 receiver(Sub) ->
   receive
       {udp, _Socket, _IP, _InPortNo, Packet} ->
@@ -56,10 +70,35 @@ receiver(Sub) ->
 process_dnsrec(Sub,{error,E}) ->
     io:format("Error: ~p~n", [E]), % TODO: Improve error handling
     Sub;
-process_dnsrec(Sub,{ok,#dns_rec{anlist=Responses}}) ->
-    dict:map(fun(S, V) -> process_responses(S, V, Responses) end, Sub).
+process_dnsrec(Sub,{ok,#dns_rec{qdlist=Queries,anlist=Responses}}) ->
+    process_queries(Queries),
+    dict:map(fun(S,V) -> process_responses(S,V,Responses) end, Sub).
  
+process_queries([]) -> ok;
+process_queries(Queries) ->
+    io:format("Queries: ~p~n",[Queries]),
+    Reg = ["_see._tcp.local"],
+    lists:foreach(fun(Q) -> case lists:member(Q#dns_query.domain,Reg) of 
+                                true -> io:format("HIT: ~p~n",[Q]);
+                                false -> io:format("MISS: ~p~n",[Q]) 
+                            end 
+                  end, Queries),
+    lists:foreach(fun(Q) -> process_query(true,Q) end, Queries).
+    %lists:foreach(fun(Q) -> process_query(lists:member(Q#dns_query.domain,Reg),Q) end, Queries).
+
+process_query(false,_) -> ok;
+process_query(true,Query) ->
+    io:format("Registered Query: ~p~n",[Query]),
+    H = #dns_header{qr=1,aa=1},
+    D = "test@Blackintosh._test._tcp.local",
+    R = #dns_rr{domain="_test._tcp.local",type=ptr,ttl=4500,data=D},
+    Rec = #dns_rec{header=H,anlist=[R]},
+    {ok,S} = gen_udp:open(5353,[{reuseaddr,true},{ip,{224,0,0,251}},{multicast_ttl,4},{broadcast,true}, binary]),
+    gen_udp:send(S, {224,0,0,251}, 5353, inet_dns:encode(Rec)),
+    gen_udp:close(S).
+
 process_responses(S, Value, Responses) ->
+    io:format("Responses ~p~n",[Responses]),
     lists:foldl(fun(#dns_rr{domain = Domain} = Response, Val) ->
         process_response(lists:suffix(S, Domain), Response, Val) end, Value, Responses).
  
