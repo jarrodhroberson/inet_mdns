@@ -16,7 +16,7 @@ send() ->
     D = "test@" ++ HN ++ "._test._tcp.local",
     R = #dns_rr{domain="_test._tcp.local",type=ptr,ttl=4500,data=D},
     Rec = #dns_rec{header=H,anlist=[R]},
-    {ok,S}=gen_udp:open(0,[]),
+    {ok,S}=gen_udp:open(?PORT,[{ip,{192,168,0,105}}]),
     inet:setopts(S, [{reuseaddr,true},{broadcast,true}]),
     gen_udp:send(S,?ADDR,?PORT,inet_dns:encode(Rec)).
 
@@ -27,7 +27,7 @@ get_timestamp() ->
 
 start() ->
     %% start the process listening for mdns messages
-   {ok,S} = gen_udp:open(?PORT,[{reuseaddr,true},{ip,?ADDR},binary]),
+   {ok,S} = gen_udp:open(?PORT,[{reuseaddr,true},{ip,{192,168,0,105}},binary]),
    inet:setopts(S,[{add_membership,{?ADDR,{0,0,0,0}}}]),
    Pid=spawn(?MODULE,receiver,[dict:new()]),
    gen_udp:controlling_process(S,Pid),
